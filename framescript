@@ -1,50 +1,75 @@
--- kintest: single-file, local Studio test panel.
--- Workspace Script, RunContext = Client. No existing source files are modified.
+-- kintest: single-file, local test panel.
 -- Avatar overlay is cosmetic and local; identity, hitboxes and server state stay intact.
+warn("[KINTEST] Starting v2...")
+local ok,err=pcall(function()
 local Players=game:GetService("Players")
 local RunService=game:GetService("RunService")
 local UIS=game:GetService("UserInputService")
 local RS=game:GetService("ReplicatedStorage")
-if not RunService:IsStudio() then return end
+local HttpService=game:GetService("HttpService")
 local player=Players.LocalPlayer
 if not player then return end
 local playerGui=player:WaitForChild("PlayerGui")
-if playerGui:FindFirstChild("kintestUI") then return end
+local oldUI=playerGui:FindFirstChild("kintestUI")
+if oldUI then oldUI:Destroy() end
+
+local CONFIG_FOLDER="kintest"
 
 local gui=Instance.new("ScreenGui")
 gui.Name="kintestUI" gui.ResetOnSpawn=false gui.DisplayOrder=200 gui.Parent=playerGui
 local panel=Instance.new("Frame")
-panel.Name="Panel" panel.Position=UDim2.fromOffset(24,150) panel.Size=UDim2.fromOffset(330,405)
+panel.Name="Panel" panel.Position=UDim2.fromOffset(24,150) panel.Size=UDim2.fromOffset(330,450)
 panel.BackgroundColor3=Color3.fromRGB(24,27,36) panel.BorderSizePixel=0 panel.Parent=gui
 local stroke=Instance.new("UIStroke",panel) stroke.Color=Color3.fromRGB(105,144,208) stroke.Thickness=2
+
+local scroll=Instance.new("ScrollingFrame")
+scroll.Name="Content" scroll.Size=UDim2.new(1,0,1,0)
+scroll.CanvasSize=UDim2.fromOffset(0,880) scroll.BackgroundTransparency=1 scroll.BorderSizePixel=0
+scroll.ScrollBarThickness=4 scroll.ScrollBarImageColor3=Color3.fromRGB(105,144,208) scroll.Parent=panel
+
 local function label(text,y,height)
  local t=Instance.new("TextLabel") t.BackgroundTransparency=1 t.Position=UDim2.fromOffset(16,y)
  t.Size=UDim2.new(1,-32,0,height or 24) t.Font=Enum.Font.Gotham t.TextSize=14
  t.TextColor3=Color3.fromRGB(220,228,243) t.TextXAlignment=Enum.TextXAlignment.Left
- t.TextWrapped=true t.Text=text t.Parent=panel return t
+ t.TextWrapped=true t.Text=text t.Parent=scroll return t
 end
 local function button(name,text,y)
  local b=Instance.new("TextButton") b.Name=name b.Position=UDim2.fromOffset(16,y) b.Size=UDim2.new(1,-32,0,34)
  b.BackgroundColor3=Color3.fromRGB(49,67,100) b.BorderSizePixel=0 b.Font=Enum.Font.GothamBold
- b.TextSize=14 b.TextColor3=Color3.new(1,1,1) b.Text=text b.Parent=panel return b
+ b.TextSize=14 b.TextColor3=Color3.new(1,1,1) b.Text=text b.Parent=scroll return b
 end
 local function box(name,placeholder,text,y)
  local b=Instance.new("TextBox") b.Name=name b.Position=UDim2.fromOffset(16,y) b.Size=UDim2.new(1,-32,0,32)
  b.BackgroundColor3=Color3.fromRGB(36,40,53) b.BorderSizePixel=0 b.Font=Enum.Font.Gotham
  b.TextSize=14 b.TextColor3=Color3.new(1,1,1) b.PlaceholderText=placeholder b.Text=text b.ClearTextOnFocus=false
- b.Parent=panel return b
+ b.Parent=scroll return b
 end
-label("KINTEST  /  STUDIO",12).Font=Enum.Font.GothamBold
-local toggle=button("TriggerToggle","TRIGGER TEST: OFF",47)
-label("Delay in milliseconds (0–5000)",88)
+
+label("KINTEST",12).Font=Enum.Font.GothamBold
+local triggerToggle=button("TriggerToggle","TRIGGER TEST: OFF",47)
+label("Delay in milliseconds (0-5000)",88)
 local delayBox=box("TriggerDelay","Milliseconds","150",114)
 local targetLabel=label("Aim at a visible opponent.",153,36)
-label("LOCAL AVATAR • username, not display name",201)
-local username=box("AvatarUsername","Roblox username","",231)
-local apply=button("ApplyAvatar","PREVIEW AVATAR",274)
-local reset=button("ResetAvatar","RESTORE MY AVATAR",316)
-local status=label("Right Shift: show / hide panel",358,36)
+label("LOCAL AVATAR",197)
+local usernameBox=box("AvatarUsername","Roblox username","",225)
+local applyAvatar=button("ApplyAvatar","PREVIEW AVATAR",263)
+local resetAvatar=button("ResetAvatar","RESTORE MY AVATAR",303)
+label("DISPLAY SPOOF",345)
+local nicknameBox=box("Nickname","Nickname","",373)
+local levelBox=box("Level","Level","",411)
+local streakBox=box("Streak","Win Streak","",449)
+local applySpoofBtn=button("ApplySpoof","APPLY CHANGES",487)
+local resetSpoofBtn=button("ResetSpoof","RESET TO ORIGINAL",527)
+label("VERIFIED BADGE",569)
+local verifiedToggle=button("VerifiedToggle","BADGE: OFF",597)
+label("CONFIG",639)
+local configNameBox=box("ConfigName","Config name","",667)
+local saveConfigBtn=button("SaveConfig","SAVE CONFIG",705)
+local loadConfigBtn=button("LoadConfig","LOAD CONFIG",745)
+local autoloadBtn=button("AutoloadConfig","SET AUTOLOAD",785)
+local status=label("Right Shift: show / hide panel",827,36)
 
+-- trigger state
 local enabled=false
 local delaySeconds=.15
 local candidate=nil
@@ -59,10 +84,10 @@ task.spawn(function()
   if ok and type(result)=="table" and type(result.tap)=="function" then attackInput=result end
  end
 end)
-toggle.Activated:Connect(function()
+triggerToggle.Activated:Connect(function()
  enabled=not enabled candidate=nil
- toggle.Text=enabled and "TRIGGER TEST: ON" or "TRIGGER TEST: OFF"
- toggle.BackgroundColor3=enabled and Color3.fromRGB(48,120,89) or Color3.fromRGB(49,67,100)
+ triggerToggle.Text=enabled and "TRIGGER TEST: ON" or "TRIGGER TEST: OFF"
+ triggerToggle.BackgroundColor3=enabled and Color3.fromRGB(48,120,89) or Color3.fromRGB(49,67,100)
 end)
 delayBox.FocusLost:Connect(function()
  local n=tonumber(delayBox.Text)
@@ -73,18 +98,21 @@ UIS.InputBegan:Connect(function(input,processed)
  if not processed and not UIS:GetFocusedTextBox() and input.KeyCode==Enum.KeyCode.RightShift then panel.Visible=not panel.Visible end
 end)
 
+-- avatar overlay
 local overlay=nil
-local bodyPairs={}
+local overlayParts={}
 local originalTransparency={}
 local originalDecals={}
 local avatarGeneration=0
+
 local function clearAvatar()
  if overlay then overlay:Destroy() overlay=nil end
- table.clear(bodyPairs)
+ table.clear(overlayParts)
  for p,value in originalTransparency do if p.Parent then p.LocalTransparencyModifier=value end end
  for p,value in originalDecals do if p.Parent then p.Transparency=value end end
  table.clear(originalTransparency) table.clear(originalDecals)
 end
+
 local function hidePart(p)
  if p:IsA("BasePart") then
   if originalTransparency[p]==nil then originalTransparency[p]=p.LocalTransparencyModifier end
@@ -94,9 +122,10 @@ local function hidePart(p)
   p.Transparency=1
  end
 end
+
 local function renderAvatar(name)
  avatarGeneration+=1 local generation=avatarGeneration
- status.Text="Loading avatar…"
+ status.Text="Loading avatar..."
  local character=player.Character
  local humanoid=character and character:FindFirstChildOfClass("Humanoid")
  if not humanoid then status.Text="Spawn your character first." return end
@@ -110,56 +139,371 @@ local function renderAvatar(name)
  if generation~=avatarGeneration or character~=player.Character then
   if ok then result:Destroy() end return
  end
- if not ok then status.Text="Could not load that username. Try again." return end
+ if not ok then status.Text="Could not load that username." return end
  clearAvatar()
  overlay=result overlay.Name="kintestAvatarPreview"
+ -- remove scripts, humanoid, and internal joints
  for _,d in overlay:GetDescendants() do
-  if d:IsA("BaseScript") then d:Destroy()
-  elseif d:IsA("BasePart") then d.Anchored=true d.CanCollide=false d.CanTouch=false d.CanQuery=false d.CastShadow=false
-  elseif d:IsA("Humanoid") then d.DisplayDistanceType=Enum.HumanoidDisplayDistanceType.None end
+  if d:IsA("BaseScript") or d:IsA("Motor6D") or d:IsA("Humanoid") then d:Destroy() end
  end
- local pairsByPart={}
+ -- set part properties
+ for _,d in overlay:GetDescendants() do
+  if d:IsA("BasePart") then
+   d.Anchored=true d.CanCollide=false d.CanTouch=false d.CanQuery=false d.CastShadow=false d.Massless=true
+  end
+ end
+ -- weld overlay body parts to live body parts via WeldConstraints
+ local pairedBodies={}
  for _,p in overlay:GetChildren() do
   if p:IsA("BasePart") then
    local live=character:FindFirstChild(p.Name)
    if live and live:IsA("BasePart") then
-    pairsByPart[p]=live
-    table.insert(bodyPairs,{part=p,live=live,offset=CFrame.identity})
+    p.CFrame=live.CFrame
+    local wc=Instance.new("WeldConstraint")
+    wc.Part0=live wc.Part1=p wc.Parent=p
+    p.Anchored=false
+    pairedBodies[p]=true
+    table.insert(overlayParts,p)
+   else
+    p.Transparency=1
    end
   end
  end
+ -- unanchor accessory handles whose AccessoryWeld targets a paired body part
  for _,accessory in overlay:GetChildren() do
   if accessory:IsA("Accessory") then
    for _,p in accessory:GetDescendants() do
     if p:IsA("BasePart") then
      local weld=p:FindFirstChild("AccessoryWeld")
      local body=weld and weld.Part1
-     if body and pairsByPart[body] then
-      table.insert(bodyPairs,{part=p,live=pairsByPart[body],offset=body.CFrame:ToObjectSpace(p.CFrame)})
-     else p.Transparency=1 end
+     if body and pairedBodies[body] then
+      p.Anchored=false
+      table.insert(overlayParts,p)
+     else
+      p.Transparency=1
+     end
     end
    end
   end
  end
+ -- hide real character parts (skip HumanoidRootPart, weapon rigs, tools)
+ local skip={}
+ for _,child in character:GetChildren() do
+  if child:IsA("Model") and not child:IsA("Accessory") then
+   skip[child]=true
+   for _,d in child:GetDescendants() do skip[d]=true end
+  end
+ end
  for _,p in character:GetDescendants() do
-  if not p:FindFirstAncestorOfClass("Tool") then hidePart(p) end
+  if p:FindFirstAncestorOfClass("Tool") then continue end
+  if p:IsA("BasePart") and p.Name=="HumanoidRootPart" then continue end
+  if skip[p] then continue end
+  hidePart(p)
  end
  overlay.Parent=workspace
- status.Text="Previewing @"..name.." • only visible to you"
+ status.Text="Previewing @"..name.." (local only)"
 end
-apply.Activated:Connect(function()
- local name=username.Text:match("^%s*@?([%w_]+)%s*$")
+
+applyAvatar.Activated:Connect(function()
+ local name=usernameBox.Text:match("^%s*@?([%w_]+)%s*$")
  if not name or #name<3 or #name>20 then status.Text="Enter a valid Roblox username." return end
  task.spawn(renderAvatar,name)
 end)
-reset.Activated:Connect(function()
+resetAvatar.Activated:Connect(function()
  avatarGeneration+=1 clearAvatar() status.Text="Original avatar restored."
 end)
-player.CharacterAdded:Connect(function()
- avatarGeneration+=1 clearAvatar() candidate=nil
- status.Text="Respawned • original avatar restored."
+
+-- spoof text helper: persists text even if the game overwrites it
+local spoofConns={}
+local function spoofText(lbl,text)
+ if not lbl then return end
+ if spoofConns[lbl] then spoofConns[lbl]:Disconnect() end
+ local desired=text
+ local locked=false
+ spoofConns[lbl]=lbl:GetPropertyChangedSignal("Text"):Connect(function()
+  if locked then return end
+  if lbl.Text~=desired then locked=true lbl.Text=desired locked=false end
+ end)
+ locked=true lbl.Text=desired locked=false
+end
+local function unspoofText(lbl)
+ if spoofConns[lbl] then spoofConns[lbl]:Disconnect() spoofConns[lbl]=nil end
+end
+local function unspoofAll()
+ for _,c in spoofConns do c:Disconnect() end
+ table.clear(spoofConns)
+end
+
+-- verified badge
+local verifiedEnabled=false
+local VERIFIED=utf8.char(0xE000)
+
+local function getOverheadName()
+ local char=player.Character
+ if not char then return nil end
+ local oh=char:FindFirstChild("OVERHEAD")
+ if not oh then return nil end
+ return oh:FindFirstChild("NameLabel",true)
+end
+
+local function refreshVerifiedBadge()
+ local nl=getOverheadName()
+ if not nl then return end
+ local txt=nl.Text:gsub(" ?"..VERIFIED,"")
+ if verifiedEnabled then txt=txt.." "..VERIFIED end
+ spoofText(nl,txt)
+end
+
+local function clearVerifiedTag()
+ local nl=getOverheadName()
+ if nl then
+  local clean=nl.Text:gsub(" ?"..VERIFIED,"")
+  unspoofText(nl)
+  nl.Text=clean
+ end
+end
+
+verifiedToggle.Activated:Connect(function()
+ verifiedEnabled=not verifiedEnabled
+ verifiedToggle.Text=verifiedEnabled and "BADGE: ON" or "BADGE: OFF"
+ verifiedToggle.BackgroundColor3=verifiedEnabled and Color3.fromRGB(48,120,89) or Color3.fromRGB(49,67,100)
+ if verifiedEnabled then refreshVerifiedBadge() else clearVerifiedTag() end
 end)
 
+-- display spoof
+local savedDisplayName=nil
+local savedLevel=nil
+local savedLevelAttr=nil
+local savedStreak=nil
+local savedStreakAttr=nil
+
+local function applySpoofs()
+ local char=player.Character
+ local hum=char and char:FindFirstChildOfClass("Humanoid")
+ local oh=char and char:FindFirstChild("OVERHEAD")
+
+ local nick=nicknameBox.Text:match("^%s*(.-)%s*$")
+ if nick and #nick>0 then
+  if hum then
+   if not savedDisplayName then savedDisplayName=hum.DisplayName end
+   hum.DisplayName=nick
+  end
+  if oh then
+   local nl=oh:FindFirstChild("NameLabel",true)
+   if nl then
+    local txt=nick
+    if verifiedEnabled then txt=txt.." "..VERIFIED end
+    spoofText(nl,txt)
+   end
+  end
+ end
+
+ local lv=tonumber(levelBox.Text)
+ if lv then
+  local ls=player:FindFirstChild("leaderstats")
+  if ls then
+   local stat=ls:FindFirstChild("Level")
+   if stat and stat:IsA("ValueBase") then
+    if not savedLevel then savedLevel={obj=stat,val=stat.Value} end
+    stat.Value=lv
+   end
+  end
+  local oldAttr=player:GetAttribute("Level")
+  if oldAttr~=nil then
+   if not savedLevelAttr then savedLevelAttr=oldAttr end
+   player:SetAttribute("Level",lv)
+  end
+  if oh then
+   local ll=oh:FindFirstChild("Level",true)
+   if ll and (ll:IsA("TextLabel") or ll:IsA("TextButton")) then spoofText(ll,tostring(lv)) end
+  end
+ end
+
+ local sk=tonumber(streakBox.Text)
+ if sk then
+  local ls=player:FindFirstChild("leaderstats")
+  if ls then
+   local stat=ls:FindFirstChild("Win Streak")
+   if stat and stat:IsA("ValueBase") then
+    if not savedStreak then savedStreak={obj=stat,val=stat.Value} end
+    stat.Value=sk
+   end
+  end
+  local oldAttr=player:GetAttribute("WinStreak")
+  if oldAttr~=nil then
+   if not savedStreakAttr then savedStreakAttr=oldAttr end
+   player:SetAttribute("WinStreak",sk)
+  end
+  if oh then
+   local sl=oh:FindFirstChild("Label",true)
+   if sl and (sl:IsA("TextLabel") or sl:IsA("TextButton")) then spoofText(sl,tostring(sk)) end
+  end
+ end
+
+ status.Text="Changes applied (local only)."
+end
+
+local function resetSpoofs()
+ local char=player.Character
+ local hum=char and char:FindFirstChildOfClass("Humanoid")
+ if hum and savedDisplayName then hum.DisplayName=savedDisplayName savedDisplayName=nil end
+ if savedLevel then
+  if savedLevel.obj and savedLevel.obj.Parent then savedLevel.obj.Value=savedLevel.val end
+  savedLevel=nil
+ end
+ if savedLevelAttr~=nil then player:SetAttribute("Level",savedLevelAttr) savedLevelAttr=nil end
+ if savedStreak then
+  if savedStreak.obj and savedStreak.obj.Parent then savedStreak.obj.Value=savedStreak.val end
+  savedStreak=nil
+ end
+ if savedStreakAttr~=nil then player:SetAttribute("WinStreak",savedStreakAttr) savedStreakAttr=nil end
+ unspoofAll()
+ nicknameBox.Text="" levelBox.Text="" streakBox.Text=""
+ if verifiedEnabled then task.defer(refreshVerifiedBadge) end
+ status.Text="Display restored to original."
+end
+
+applySpoofBtn.Activated:Connect(function() applySpoofs() end)
+resetSpoofBtn.Activated:Connect(function() resetSpoofs() end)
+
+-- config system
+local function ensureFolder()
+ pcall(function() if not isfolder(CONFIG_FOLDER) then makefolder(CONFIG_FOLDER) end end)
+end
+
+local function getAutoloadName()
+ local ok,result=pcall(function()
+  local path=CONFIG_FOLDER.."/autoload.txt"
+  if isfile(path) then return readfile(path) end
+  return nil
+ end)
+ if ok and result and #result>0 then return result end
+ return nil
+end
+
+local function updateAutoloadLabel()
+ local name=getAutoloadName()
+ autoloadBtn.Text=name and ("AUTOLOAD: "..name) or "SET AUTOLOAD"
+end
+
+local function buildConfigData()
+ return {
+  nickname=nicknameBox.Text,
+  level=levelBox.Text,
+  streak=streakBox.Text,
+  verified=verifiedEnabled,
+  trigger=enabled,
+  delay=delaySeconds*1000,
+  avatar=usernameBox.Text
+ }
+end
+
+local function applyConfigData(data)
+ if data.nickname then nicknameBox.Text=tostring(data.nickname) end
+ if data.level then levelBox.Text=tostring(data.level) end
+ if data.streak then streakBox.Text=tostring(data.streak) end
+ if data.avatar then usernameBox.Text=tostring(data.avatar) end
+ if data.delay then
+  local n=tonumber(data.delay) or 150
+  delaySeconds=n/1000
+  delayBox.Text=tostring(n)
+ end
+ if data.trigger~=nil and data.trigger~=enabled then
+  enabled=data.trigger candidate=nil
+  triggerToggle.Text=enabled and "TRIGGER TEST: ON" or "TRIGGER TEST: OFF"
+  triggerToggle.BackgroundColor3=enabled and Color3.fromRGB(48,120,89) or Color3.fromRGB(49,67,100)
+ end
+ if data.verified~=nil and data.verified~=verifiedEnabled then
+  verifiedEnabled=data.verified
+  verifiedToggle.Text=verifiedEnabled and "BADGE: ON" or "BADGE: OFF"
+  verifiedToggle.BackgroundColor3=verifiedEnabled and Color3.fromRGB(48,120,89) or Color3.fromRGB(49,67,100)
+ end
+ -- apply nickname/level/streak to overhead
+ local nick=nicknameBox.Text:match("^%s*(.-)%s*$")
+ if (nick and #nick>0) or tonumber(levelBox.Text) or tonumber(streakBox.Text) then
+  applySpoofs()
+ end
+ if verifiedEnabled then refreshVerifiedBadge() end
+ -- apply avatar if set
+ if data.avatar and #tostring(data.avatar)>0 then
+  local aname=tostring(data.avatar):match("^%s*@?([%w_]+)%s*$")
+  if aname and #aname>=3 and #aname<=20 then
+   task.spawn(renderAvatar,aname)
+  end
+ end
+end
+
+saveConfigBtn.Activated:Connect(function()
+ local name=configNameBox.Text:match("^%s*(.-)%s*$")
+ if not name or #name<1 then status.Text="Enter a config name." return end
+ local ok,err=pcall(function()
+  ensureFolder()
+  local json=HttpService:JSONEncode(buildConfigData())
+  writefile(CONFIG_FOLDER.."/"..name..".json",json)
+ end)
+ if ok then status.Text="Config saved: "..name
+ else status.Text="Save failed: "..tostring(err) end
+end)
+
+loadConfigBtn.Activated:Connect(function()
+ local name=configNameBox.Text:match("^%s*(.-)%s*$")
+ if not name or #name<1 then status.Text="Enter a config name." return end
+ local ok,err=pcall(function()
+  local path=CONFIG_FOLDER.."/"..name..".json"
+  if not isfile(path) then error("Config not found: "..name) end
+  local json=readfile(path)
+  local data=HttpService:JSONDecode(json)
+  applyConfigData(data)
+ end)
+ if ok then status.Text="Config loaded: "..name
+ else status.Text=tostring(err) end
+end)
+
+autoloadBtn.Activated:Connect(function()
+ local name=configNameBox.Text:match("^%s*(.-)%s*$")
+ local ok,err=pcall(function()
+  ensureFolder()
+  local path=CONFIG_FOLDER.."/autoload.txt"
+  if not name or #name<1 then
+   if isfile(path) then delfile(path) end
+  else
+   writefile(path,name)
+  end
+ end)
+ if ok then
+  updateAutoloadLabel()
+  if name and #name>0 then status.Text="Autoload set: "..name
+  else status.Text="Autoload cleared." end
+ else status.Text="Failed: "..tostring(err) end
+end)
+
+pcall(updateAutoloadLabel)
+
+-- respawn handler: re-apply spoofs and verified badge
+player.CharacterAdded:Connect(function(newChar)
+ avatarGeneration+=1 clearAvatar() candidate=nil
+ unspoofAll()
+ savedDisplayName=nil savedLevel=nil savedLevelAttr=nil savedStreak=nil savedStreakAttr=nil
+ task.spawn(function()
+  newChar:WaitForChild("OVERHEAD",10)
+  task.wait(0.3)
+  if player.Character~=newChar then return end
+  local nick=nicknameBox.Text:match("^%s*(.-)%s*$")
+  if (nick and #nick>0) or tonumber(levelBox.Text) or tonumber(streakBox.Text) then
+   applySpoofs()
+  end
+  if verifiedEnabled then refreshVerifiedBadge() end
+  if usernameBox.Text and #usernameBox.Text>0 then
+   local aname=usernameBox.Text:match("^%s*@?([%w_]+)%s*$")
+   if aname and #aname>=3 and #aname<=20 then
+    task.spawn(renderAvatar,aname)
+   end
+  end
+ end)
+ status.Text="Respawned."
+end)
+
+-- triggerbot with wall check
 local function visibleOpponent()
  local char=player.Character local camera=workspace.CurrentCamera
  local hum=char and char:FindFirstChildOfClass("Humanoid")
@@ -188,6 +532,17 @@ local function visibleOpponent()
  local theirMatch=other:GetAttribute("DuelId") or other:GetAttribute("MatchId")
  if myMatch and theirMatch and myMatch~=theirMatch then return nil end
  if model:FindFirstChildOfClass("ForceField") then return nil end
+ local myHead=char:FindFirstChild("Head")
+ local targetPart=model:FindFirstChild("HumanoidRootPart") or model:FindFirstChild("Head")
+ if myHead and targetPart then
+  local dir=targetPart.Position-myHead.Position
+  local rp2=RaycastParams.new() rp2.FilterType=Enum.RaycastFilterType.Exclude
+  local ex2={char,camera}
+  if overlay then table.insert(ex2,overlay) end
+  rp2.FilterDescendantsInstances=ex2
+  local hit2=workspace:Raycast(myHead.Position,dir,rp2)
+  if hit2 and not hit2.Instance:IsDescendantOf(model) then return nil end
+ end
  return other
 end
 
@@ -197,11 +552,8 @@ local connection=RunService.RenderStepped:Connect(function()
   local root=player.Character and player.Character:FindFirstChild("HumanoidRootPart")
   local firstPerson=camera and root and (camera.CFrame.Position-root.Position).Magnitude<2
   for p in originalTransparency do if p.Parent then p.LocalTransparencyModifier=1 end end
-  for _,pair in bodyPairs do
-   if pair.part.Parent and pair.live.Parent then
-    pair.part.CFrame=pair.live.CFrame*pair.offset
-    pair.part.LocalTransparencyModifier=firstPerson and 1 or 0
-   end
+  for _,part in overlayParts do
+   if part.Parent then part.LocalTransparencyModifier=firstPerson and 1 or 0 end
   end
  end
  if not enabled then candidate=nil return end
@@ -209,9 +561,8 @@ local connection=RunService.RenderStepped:Connect(function()
  local now=os.clock()
  if not target then candidate=nil targetLabel.Text="No visible opponent under crosshair." return end
  if candidate~=target then candidate=target acquired=now end
- targetLabel.Text="Visible: @"..target.Name.." • "..math.max(0,math.ceil((delaySeconds-(now-acquired))*1000)).." ms"
+ targetLabel.Text="Visible: @"..target.Name.." | "..math.max(0,math.ceil((delaySeconds-(now-acquired))*1000)).." ms"
  if now-acquired<delaySeconds or now<nextFire then return end
- -- Resolve visibility again after the delay; never aim or shoot through geometry.
  if visibleOpponent()~=target then candidate=nil return end
  nextFire=now+math.max(delaySeconds,.08)
  acquired=now
@@ -219,9 +570,43 @@ local connection=RunService.RenderStepped:Connect(function()
   attackInput.tap("Attack")
  else
   local tool=player.Character and player.Character:FindFirstChildOfClass("Tool")
-  if tool then tool:Activate() else targetLabel.Text="Waiting for the weapon input controller." end
+  if tool then tool:Activate() else targetLabel.Text="Waiting for weapon input controller." end
  end
 end)
+
 gui.Destroying:Connect(function()
  enabled=false avatarGeneration+=1 connection:Disconnect() clearAvatar()
+ clearVerifiedTag() unspoofAll()
+ local hum=player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+ if hum and savedDisplayName then hum.DisplayName=savedDisplayName end
+ if savedLevel and savedLevel.obj and savedLevel.obj.Parent then savedLevel.obj.Value=savedLevel.val end
+ if savedLevelAttr~=nil then player:SetAttribute("Level",savedLevelAttr) end
+ if savedStreak and savedStreak.obj and savedStreak.obj.Parent then savedStreak.obj.Value=savedStreak.val end
+ if savedStreakAttr~=nil then player:SetAttribute("WinStreak",savedStreakAttr) end
 end)
+
+-- autoload on injection
+task.spawn(function()
+ local char=player.Character or player.CharacterAdded:Wait()
+ char:WaitForChild("OVERHEAD",10)
+ task.wait(0.5)
+ if player.Character~=char then return end
+ local ok,autoName=pcall(function()
+  local path=CONFIG_FOLDER.."/autoload.txt"
+  if isfile(path) then return readfile(path) end
+  return nil
+ end)
+ if ok and autoName and #autoName>0 then
+  local ok2=pcall(function()
+   local path=CONFIG_FOLDER.."/"..autoName..".json"
+   if not isfile(path) then return end
+   local json=readfile(path)
+   local data=HttpService:JSONDecode(json)
+   configNameBox.Text=autoName
+   applyConfigData(data)
+  end)
+  if ok2 then status.Text="Auto-loaded: "..autoName end
+ end
+end)
+end)
+if not ok then warn("KINTEST ERROR: "..tostring(err)) end
