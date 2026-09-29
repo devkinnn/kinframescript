@@ -597,6 +597,8 @@ local _origBTFire=BT.Fire
 local _origBTWallHit=BT.WallHit
 local _lastBTWasOurs=false
 local throwAttrGuard=nil
+local knifeSkinGuard=nil
+local revolverSkinGuard=nil
 local activeKnifeSkin=nil
 local activeRevolverSkin=nil
 local originalKnifeAttrs=nil
@@ -616,11 +618,14 @@ local function findRigMotor(char,rootName)
  return nil
 end
 
+local _ATTR_NIL=newproxy()
 local function saveAttrs(keys)
- local s={} for _,k in keys do s[k]=player:GetAttribute(k) end return s
+ local s={} for _,k in keys do local v=player:GetAttribute(k) s[k]=(v==nil and _ATTR_NIL or v) end return s
 end
 local function restoreAttrs(saved)
- for k,v in saved do if v~=nil then player:SetAttribute(k,v) end end
+ for k,v in saved do
+  if v==_ATTR_NIL then player:SetAttribute(k,nil) else player:SetAttribute(k,v) end
+ end
 end
 
 local function clearWeaponSkin()
@@ -633,7 +638,7 @@ local function clearWeaponSkin()
   restoreAttrs(originalKnifeAttrs)
   if char then
    local origSkin=originalKnifeAttrs.KnifeSkin
-   if origSkin then
+   if origSkin and origSkin~=_ATTR_NIL then
     local motor=findRigMotor(char,"KnifeRoot")
     if motor then pcall(WRU.ApplyKnifeSkin,char,origSkin,motor.Part0,motor.Name) end
    end
@@ -648,7 +653,7 @@ local function clearWeaponSkin()
   restoreAttrs(originalRevolverAttrs)
   if char then
    local origSkin=originalRevolverAttrs.RevolverSkin
-   if origSkin then
+   if origSkin and origSkin~=_ATTR_NIL then
     local motor=findRigMotor(char,"RevolverRoot")
     if motor then pcall(WRU.ApplyRevolverSkin,char,origSkin,motor.Part0,motor.Name) end
    end
@@ -678,8 +683,9 @@ local function applyKnifeSkinFull(skinName)
   motorName="Knife_HipAttach_R"
  end
  if not part0 then skinStatus.Text="No attachment point." _knifeApplying=false return end
- -- set throw trail locally (don't touch KnifeSkin — that replicates and leaks to replay)
+ -- set attributes so other players see the correct knife skin/animations
  player:SetAttribute("ThrowEffect",skinName.."Trail")
+ player:SetAttribute("KnifeSkin",skinName)
  -- swap viewmodel via game's own pipeline
  local newRig,newRoot=WRU.ApplyKnifeSkin(char,skinName,part0,motorName)
  if newRig then
@@ -728,11 +734,20 @@ local function applyRevolverSkinFull(skinName)
   motorName="Revolver_HipAttach_L"
  end
  if not part0 then skinStatus.Text="No attachment point." _revolverApplying=false return end
- -- don't touch RevolverSkin attribute — that replicates and leaks to replay/other players
+ -- set attribute so other players see the correct revolver skin/animations
+ player:SetAttribute("RevolverSkin",skinName)
  local newRig,newRoot=WRU.ApplyRevolverSkin(char,skinName,part0,motorName)
  if newRig then
   newRig:SetAttribute("ClientVisible",true)
   newRig:SetAttribute("_kintest",skinName)
+  -- strip scope-frame GUIs from the rig so other players don't see scope overlay in 3D
+  for _,d in newRig:GetDescendants() do
+   if d:IsA("BillboardGui") or d:IsA("SurfaceGui") then d.Enabled=false end
+  end
+  if skinGuardConns.scopeStrip then skinGuardConns.scopeStrip:Disconnect() end
+  skinGuardConns.scopeStrip=newRig.DescendantAdded:Connect(function(d)
+   if d:IsA("BillboardGui") or d:IsA("SurfaceGui") then d.Enabled=false end
+  end)
   local isHand=part0.Name=="Right Arm" or part0.Name=="RightHand" or part0.Name=="Left Arm" or part0.Name=="LeftHand"
   if not isHand and savedC0 then
    local m2=findRigMotor(char,"RevolverRoot")
@@ -787,6 +802,22 @@ throwAttrGuard=player:GetAttributeChangedSignal("ThrowEffect"):Connect(function(
   local expected=activeKnifeSkin.."Trail"
   if player:GetAttribute("ThrowEffect")~=expected then
    player:SetAttribute("ThrowEffect",expected)
+  end
+ end
+end)
+-- Guard KnifeSkin attribute against server resets
+knifeSkinGuard=player:GetAttributeChangedSignal("KnifeSkin"):Connect(function()
+ if activeKnifeSkin and not _knifeApplying then
+  if player:GetAttribute("KnifeSkin")~=activeKnifeSkin then
+   player:SetAttribute("KnifeSkin",activeKnifeSkin)
+  end
+ end
+end)
+-- Guard RevolverSkin attribute against server resets
+revolverSkinGuard=player:GetAttributeChangedSignal("RevolverSkin"):Connect(function()
+ if activeRevolverSkin and not _revolverApplying then
+  if player:GetAttribute("RevolverSkin")~=activeRevolverSkin then
+   player:SetAttribute("RevolverSkin",activeRevolverSkin)
   end
  end
 end)
@@ -920,6 +951,8 @@ gui.Destroying:Connect(function()
  -- restore bullet tracer hooks
  BT.Fire=_origBTFire BT.WallHit=_origBTWallHit
  if throwAttrGuard then throwAttrGuard:Disconnect() throwAttrGuard=nil end
+ if knifeSkinGuard then knifeSkinGuard:Disconnect() knifeSkinGuard=nil end
+ if revolverSkinGuard then revolverSkinGuard:Disconnect() revolverSkinGuard=nil end
  -- restore weapon skins to original
  if activeKnifeSkin or activeRevolverSkin then clearWeaponSkin() end
  for _,c in skinGuardConns do c:Disconnect() end
