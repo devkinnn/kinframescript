@@ -740,13 +740,31 @@ local function applyRevolverSkinFull(skinName)
  if newRig then
   newRig:SetAttribute("ClientVisible",true)
   newRig:SetAttribute("_kintest",skinName)
-  -- strip scope-frame GUIs from the rig so other players don't see scope overlay in 3D
-  for _,d in newRig:GetDescendants() do
-   if d:IsA("BillboardGui") or d:IsA("SurfaceGui") then d.Enabled=false end
+  -- === SCOPE NUKE: destroy every scope-related descendant so the game
+  -- never activates scope mode locally → nothing replicates to other clients
+  local function _nukeScope(inst)
+   if inst:IsA("StringValue") and inst.Name=="ScopeType" then inst:Destroy() return end
+   if inst:IsA("CFrameValue") and inst.Name=="ADSOffset" then inst:Destroy() return end
+   if inst.Name=="Scope" and (inst:IsA("MeshPart") or inst:IsA("Weld") or inst:IsA("WeldConstraint") or inst:IsA("Part")) then inst:Destroy() return end
+   if inst:IsA("BillboardGui") or inst:IsA("SurfaceGui") then inst.Enabled=false end
   end
+  for _,d in newRig:GetDescendants() do _nukeScope(d) end
   if skinGuardConns.scopeStrip then skinGuardConns.scopeStrip:Disconnect() end
-  skinGuardConns.scopeStrip=newRig.DescendantAdded:Connect(function(d)
-   if d:IsA("BillboardGui") or d:IsA("SurfaceGui") then d.Enabled=false end
+  skinGuardConns.scopeStrip=newRig.DescendantAdded:Connect(function(d) _nukeScope(d) end)
+  -- also strip ScopeType from the RS template so any internal re-clone stays clean
+  pcall(function()
+   local tpl=RS.Revolvers:FindFirstChild(skinName)
+   if tpl then
+    local tRoot=tpl:FindFirstChild("RevolverRoot")
+    if tRoot then
+     local st=tRoot:FindFirstChild("ScopeType") if st then st:Destroy() end
+     local ads=tRoot:FindFirstChild("ADSOffset") if ads then ads:Destroy() end
+     local rifle=tRoot:FindFirstChild("Rifle")
+     if rifle then
+      local sc=rifle:FindFirstChild("Scope") if sc then sc:Destroy() end
+     end
+    end
+   end
   end)
   local isHand=part0.Name=="Right Arm" or part0.Name=="RightHand" or part0.Name=="Left Arm" or part0.Name=="LeftHand"
   if not isHand and savedC0 then
