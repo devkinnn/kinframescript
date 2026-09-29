@@ -1,6 +1,7 @@
--- kintest: single-file, local test panel.
+-- kintest v6: v5 + overlay physics fix (dead Humanoid stops C++ collision management)
+-- Skin changer uses game's own WeaponRigUtil for viewmodel, sounds, and animations.
 -- Avatar overlay is cosmetic and local; identity, hitboxes and server state stay intact.
-warn("[KINTEST] Starting v2...")
+warn("[KINTEST] Starting v6...")
 local ok,err=pcall(function()
 local Players=game:GetService("Players")
 local RunService=game:GetService("RunService")
@@ -24,7 +25,7 @@ local stroke=Instance.new("UIStroke",panel) stroke.Color=Color3.fromRGB(105,144,
 
 local scroll=Instance.new("ScrollingFrame")
 scroll.Name="Content" scroll.Size=UDim2.new(1,0,1,0)
-scroll.CanvasSize=UDim2.fromOffset(0,880) scroll.BackgroundTransparency=1 scroll.BorderSizePixel=0
+scroll.CanvasSize=UDim2.fromOffset(0,1280) scroll.BackgroundTransparency=1 scroll.BorderSizePixel=0
 scroll.ScrollBarThickness=4 scroll.ScrollBarImageColor3=Color3.fromRGB(105,144,208) scroll.Parent=panel
 
 local function label(text,y,height)
@@ -44,8 +45,15 @@ local function box(name,placeholder,text,y)
  b.TextSize=14 b.TextColor3=Color3.new(1,1,1) b.PlaceholderText=placeholder b.Text=text b.ClearTextOnFocus=false
  b.Parent=scroll return b
 end
+local function skinBtn(text,y,color)
+ local b=Instance.new("TextButton") b.Position=UDim2.fromOffset(16,y) b.Size=UDim2.new(1,-32,0,28)
+ b.BackgroundColor3=color or Color3.fromRGB(40,50,70) b.BorderSizePixel=0 b.Font=Enum.Font.Gotham
+ b.TextSize=12 b.TextColor3=Color3.new(1,1,1) b.Text=text b.Parent=scroll
+ Instance.new("UICorner",b).CornerRadius=UDim.new(0,4)
+ return b
+end
 
-label("KINTEST",12).Font=Enum.Font.GothamBold
+label("KINTEST  v5",12).Font=Enum.Font.GothamBold
 local triggerToggle=button("TriggerToggle","TRIGGER TEST: OFF",47)
 label("Delay in milliseconds (0-5000)",88)
 local delayBox=box("TriggerDelay","Milliseconds","150",114)
@@ -67,9 +75,68 @@ local configNameBox=box("ConfigName","Config name","",667)
 local saveConfigBtn=button("SaveConfig","SAVE CONFIG",705)
 local loadConfigBtn=button("LoadConfig","LOAD CONFIG",745)
 local autoloadBtn=button("AutoloadConfig","SET AUTOLOAD",785)
-local status=label("Right Shift: show / hide panel",827,36)
 
--- trigger state
+-- ==========================================
+-- WEAPON SKIN CHANGER (15k+ values)
+-- ==========================================
+label("WEAPON SKIN  (15k+ value)",835).Font=Enum.Font.GothamBold
+
+-- 15k+ value weapons from murderduels.com
+local HIGH_VALUE_KNIVES = {
+ {name="OG",          value=250000, display="[OG] LMaD  250k"},
+ {name="OmegaEnergyBlade", value=120000, display="Omega Energy Blade  120k"},
+ {name="GalaxyKarambit",   value=100000, display="Cosmic Karambit  100k"},
+ {name="ChromaKatana",     value=16000,  display="Chroma Katana  16k"},
+ {name="Seraphim",         value=16000,  display="Seraphim  16k"},
+ {name="Voidreaver",       value=14000,  display="Voidreaver  14k"},
+ {name="Solaris",          value=12000,  display="Solaris  12k"},
+ {name="Lunaris",          value=11000,  display="Lunaris  11k"},
+ {name="SpaceKitty",       value=11000,  display="Space Kitty  11k"},
+ {name="LMAD",             value=10000,  display="LMaD  10k"},
+}
+local HIGH_VALUE_REVOLVERS = {
+ {name="OmegaEnergyBlaster", value=70000, display="Omega Blaster  70k"},
+ {name="MurderNote",         value=36000, display="Murder Note  36k"},
+ {name="ChromaSniper",       value=35000, display="Chroma Sniper  35k"},
+ {name="Seraphim",           value=22000, display="Seraphim  22k"},
+ {name="Railgun",            value=15000, display="Railgun Z1  15k"},
+ {name="Voidcaster",         value=14000, display="Voidcaster  14k"},
+ {name="Solaris",            value=12000, display="Solaris  12k"},
+ {name="Lunaris",            value=11000, display="Lunaris  11k"},
+ {name="SpaceKitty",         value=11000, display="Space Kitty  11k"},
+ {name="ChampionSniper",      value=15000, display="Champion Sniper  15k"},
+ {name="InfinityRay",        value=10000, display="Infinity Ray  10k"},
+}
+
+label("Knife Skins",862,20).TextColor3=Color3.fromRGB(170,200,255)
+local knifeY=884
+local knifeSkinButtons={}
+for _,entry in HIGH_VALUE_KNIVES do
+ local btn=skinBtn(entry.display, knifeY, Color3.fromRGB(55,35,65))
+ table.insert(knifeSkinButtons, {btn=btn, entry=entry})
+ knifeY+=32
+end
+
+label("Revolver Skins", knifeY+8, 20).TextColor3=Color3.fromRGB(170,200,255)
+local revY=knifeY+30
+local revolverSkinButtons={}
+for _,entry in HIGH_VALUE_REVOLVERS do
+ local btn=skinBtn(entry.display, revY, Color3.fromRGB(35,50,65))
+ table.insert(revolverSkinButtons, {btn=btn, entry=entry})
+ revY+=32
+end
+
+local resetSkinsBtn=button("ResetSkins","RESTORE ORIGINAL SKINS",revY+8)
+local skinStatus=label("Select a skin to apply locally.", revY+50, 36)
+
+-- Adjust canvas height for all content
+scroll.CanvasSize=UDim2.fromOffset(0, revY+100)
+
+local status=label("Right Shift: show / hide panel", revY+90, 36)
+
+-- ==========================================
+-- TRIGGER STATE
+-- ==========================================
 local enabled=false
 local delaySeconds=.15
 local candidate=nil
@@ -98,7 +165,9 @@ UIS.InputBegan:Connect(function(input,processed)
  if not processed and not UIS:GetFocusedTextBox() and input.KeyCode==Enum.KeyCode.RightShift then panel.Visible=not panel.Visible end
 end)
 
--- avatar overlay
+-- ==========================================
+-- AVATAR OVERLAY (classic clothes fix applied)
+-- ==========================================
 local overlay=nil
 local overlayParts={}
 local originalTransparency={}
@@ -142,10 +211,25 @@ local function renderAvatar(name)
  if not ok then status.Text="Could not load that username." return end
  clearAvatar()
  overlay=result overlay.Name="kintestAvatarPreview"
- -- remove scripts, humanoid, and internal joints
+
+ -- FIX: keep Humanoid instance so classic clothing (Shirt/Pants/ShirtGraphic) renders,
+ -- but kill it (Health=0) so the C++ physics controller stops managing CanCollide on body parts.
+ -- BreakJointsOnDeath=false MUST be set before Health=0 to prevent joint destruction.
  for _,d in overlay:GetDescendants() do
-  if d:IsA("BaseScript") or d:IsA("Motor6D") or d:IsA("Humanoid") then d:Destroy() end
+  if d:IsA("BaseScript") or d:IsA("Motor6D") or d:IsA("BodyMover") or d:IsA("Constraint") then
+   d:Destroy()
+  elseif d:IsA("Humanoid") then
+   d.DisplayDistanceType=Enum.HumanoidDisplayDistanceType.None
+   d.HealthDisplayType=Enum.HumanoidHealthDisplayType.AlwaysOff
+   d.BreakJointsOnDeath=false
+   d.WalkSpeed=0 d.JumpPower=0 d.JumpHeight=0
+   pcall(function() d.PlatformStand=true end)
+   pcall(function() d.RequiresNeck=false end)
+   pcall(function() d.EvaluateStateMachine=false end)
+   d.Health=0  -- kills the Humanoid → C++ stops forcing CanCollide on body parts
+  end
  end
+
  -- set part properties
  for _,d in overlay:GetDescendants() do
   if d:IsA("BasePart") then
@@ -156,6 +240,7 @@ local function renderAvatar(name)
  local pairedBodies={}
  for _,p in overlay:GetChildren() do
   if p:IsA("BasePart") then
+   if p.Name=="HumanoidRootPart" then p.Transparency=1 continue end
    local live=character:FindFirstChild(p.Name)
    if live and live:IsA("BasePart") then
     p.CFrame=live.CFrame
@@ -186,6 +271,26 @@ local function renderAvatar(name)
    end
   end
  end
+ -- re-enforce no-collide + guard (belt-and-suspenders: Health=0 stops C++ controller,
+ -- but FallingDown transition can sneak one CanCollide=true before settling into Dead)
+ for _,d in overlay:GetDescendants() do
+  if d:IsA("BasePart") then
+   d.CanCollide=false
+   d:GetPropertyChangedSignal("CanCollide"):Connect(function()
+    if d.Parent then d.CanCollide=false end
+   end)
+  end
+ end
+ -- deferred sweep: catches any CanCollide flip from the FallingDown→Dead transition
+ task.defer(function()
+  if not overlay.Parent then return end
+  for _,d in overlay:GetDescendants() do
+   if d:IsA("BasePart") then d.CanCollide=false end
+  end
+  -- force Dead state so the Humanoid fully stops
+  local h=overlay:FindFirstChildOfClass("Humanoid")
+  if h then h:ChangeState(Enum.HumanoidStateType.Dead) end
+ end)
  -- hide real character parts (skip HumanoidRootPart, weapon rigs, tools)
  local skip={}
  for _,child in character:GetChildren() do
@@ -213,7 +318,9 @@ resetAvatar.Activated:Connect(function()
  avatarGeneration+=1 clearAvatar() status.Text="Original avatar restored."
 end)
 
--- spoof text helper: persists text even if the game overwrites it
+-- ==========================================
+-- DISPLAY SPOOF
+-- ==========================================
 local spoofConns={}
 local function spoofText(lbl,text)
  if not lbl then return end
@@ -270,7 +377,6 @@ verifiedToggle.Activated:Connect(function()
  if verifiedEnabled then refreshVerifiedBadge() else clearVerifiedTag() end
 end)
 
--- display spoof
 local savedDisplayName=nil
 local savedLevel=nil
 local savedLevelAttr=nil
@@ -366,7 +472,9 @@ end
 applySpoofBtn.Activated:Connect(function() applySpoofs() end)
 resetSpoofBtn.Activated:Connect(function() resetSpoofs() end)
 
--- config system
+-- ==========================================
+-- CONFIG SYSTEM
+-- ==========================================
 local function ensureFolder()
  pcall(function() if not isfolder(CONFIG_FOLDER) then makefolder(CONFIG_FOLDER) end end)
 end
@@ -418,13 +526,11 @@ local function applyConfigData(data)
   verifiedToggle.Text=verifiedEnabled and "BADGE: ON" or "BADGE: OFF"
   verifiedToggle.BackgroundColor3=verifiedEnabled and Color3.fromRGB(48,120,89) or Color3.fromRGB(49,67,100)
  end
- -- apply nickname/level/streak to overhead
  local nick=nicknameBox.Text:match("^%s*(.-)%s*$")
  if (nick and #nick>0) or tonumber(levelBox.Text) or tonumber(streakBox.Text) then
   applySpoofs()
  end
  if verifiedEnabled then refreshVerifiedBadge() end
- -- apply avatar if set
  if data.avatar and #tostring(data.avatar)>0 then
   local aname=tostring(data.avatar):match("^%s*@?([%w_]+)%s*$")
   if aname and #aname>=3 and #aname<=20 then
@@ -479,10 +585,224 @@ end)
 
 pcall(updateAutoloadLabel)
 
--- respawn handler: re-apply spoofs and verified badge
+-- ==========================================
+-- WEAPON SKIN CHANGER (PROPER)
+-- Uses the game's own WeaponRigUtil to swap viewmodel, animations, sounds
+-- Sets player attributes so the game's animation/sound systems pick up the new skin
+-- ==========================================
+local WRU=require(RS.Shared.WeaponRigUtil)
+local Bindables=RS:WaitForChild("Bindables")
+local BT=require(RS.Shared.BulletTracer)
+local _origBTFire=BT.Fire
+local _origBTWallHit=BT.WallHit
+local _lastBTWasOurs=false
+local throwAttrGuard=nil
+local activeKnifeSkin=nil
+local activeRevolverSkin=nil
+local originalKnifeAttrs=nil
+local originalRevolverAttrs=nil
+local skinGuardConns={}
+local _knifeApplying=false
+local _revolverApplying=false
+
+local KNIFE_ATTR_KEYS={"KnifeSkin","KnifeName","KnifeRarity","KnifeIcon","KnifeSerial","KnifeMaxSupply","KnifeKillcam","ThrowEffect"}
+local REVOLVER_ATTR_KEYS={"RevolverSkin","RevolverName","RevolverRarity","RevolverIcon"}
+
+-- find the Motor6D whose Part1 is the rig's root part
+local function findRigMotor(char,rootName)
+ for _,d in char:GetDescendants() do
+  if d:IsA("Motor6D") and d.Part1 and d.Part1.Name==rootName then return d end
+ end
+ return nil
+end
+
+local function saveAttrs(keys)
+ local s={} for _,k in keys do s[k]=player:GetAttribute(k) end return s
+end
+local function restoreAttrs(saved)
+ for k,v in saved do if v~=nil then player:SetAttribute(k,v) end end
+end
+
+local function clearWeaponSkin()
+ for _,c in skinGuardConns do c:Disconnect() end
+ table.clear(skinGuardConns)
+ local char=player.Character
+ -- restore knife
+ if activeKnifeSkin and originalKnifeAttrs then
+  _knifeApplying=true
+  restoreAttrs(originalKnifeAttrs)
+  if char then
+   local origSkin=originalKnifeAttrs.KnifeSkin
+   if origSkin then
+    local motor=findRigMotor(char,"KnifeRoot")
+    if motor then pcall(WRU.ApplyKnifeSkin,char,origSkin,motor.Part0,motor.Name) end
+   end
+  end
+  pcall(function() Bindables.AnimateSkins:Fire() end)
+  _knifeApplying=false
+  originalKnifeAttrs=nil activeKnifeSkin=nil
+ end
+ -- restore revolver
+ if activeRevolverSkin and originalRevolverAttrs then
+  _revolverApplying=true
+  restoreAttrs(originalRevolverAttrs)
+  if char then
+   local origSkin=originalRevolverAttrs.RevolverSkin
+   if origSkin then
+    local motor=findRigMotor(char,"RevolverRoot")
+    if motor then pcall(WRU.ApplyRevolverSkin,char,origSkin,motor.Part0,motor.Name) end
+   end
+  end
+  pcall(function() Bindables.AnimateSkins:Fire() end)
+  _revolverApplying=false
+  originalRevolverAttrs=nil activeRevolverSkin=nil
+ end
+ skinStatus.Text="Original skins restored."
+end
+
+local function applyKnifeSkinFull(skinName)
+ if _knifeApplying then return end
+ _knifeApplying=true
+ local char=player.Character
+ if not char then skinStatus.Text="Spawn first." _knifeApplying=false return end
+ if not WRU.GetKnifeTemplate(skinName) then skinStatus.Text="'"..skinName.."' not in game." _knifeApplying=false return end
+ -- save originals on first call
+ if not originalKnifeAttrs then originalKnifeAttrs=saveAttrs(KNIFE_ATTR_KEYS) end
+ -- locate current motor
+ local motor=findRigMotor(char,"KnifeRoot")
+ local part0,motorName,savedC0,savedC1
+ if motor then
+  part0=motor.Part0 motorName=motor.Name savedC0=motor.C0 savedC1=motor.C1
+ else
+  part0=char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso")
+  motorName="Knife_HipAttach_R"
+ end
+ if not part0 then skinStatus.Text="No attachment point." _knifeApplying=false return end
+ -- set throw trail locally (don't touch KnifeSkin — that replicates and leaks to replay)
+ player:SetAttribute("ThrowEffect",skinName.."Trail")
+ -- swap viewmodel via game's own pipeline
+ local newRig,newRoot=WRU.ApplyKnifeSkin(char,skinName,part0,motorName)
+ if newRig then
+  newRig:SetAttribute("ClientVisible",true)
+  newRig:SetAttribute("_kintest",skinName)
+  -- if holstered (Part0 was Torso), restore hip CFrame so it doesn't float
+  local isHand=part0.Name=="Right Arm" or part0.Name=="RightHand"
+  if not isHand and savedC0 then
+   local m2=findRigMotor(char,"KnifeRoot")
+   if m2 then m2.C0=savedC0 m2.C1=savedC1 end
+  end
+  pcall(function() Bindables.AnimateSkins:Fire() end)
+  activeKnifeSkin=skinName
+  skinStatus.Text="Knife → "..skinName.." ✓"
+  -- guard: if the game resets the rig, re-apply
+  if skinGuardConns.knife then skinGuardConns.knife:Disconnect() end
+  skinGuardConns.knife=char.ChildAdded:Connect(function(child)
+   if child.Name=="KnifeRig" and activeKnifeSkin and not _knifeApplying then
+    if child:GetAttribute("_kintest")==activeKnifeSkin then return end
+    task.wait(0.2)
+    if not activeKnifeSkin or player.Character~=char or _knifeApplying then return end
+    local existing=char:FindFirstChild("KnifeRig")
+    if existing and existing:GetAttribute("_kintest")==activeKnifeSkin then return end
+    applyKnifeSkinFull(activeKnifeSkin)
+   end
+  end)
+ else
+  skinStatus.Text="Knife skin failed."
+ end
+ _knifeApplying=false
+end
+
+local function applyRevolverSkinFull(skinName)
+ if _revolverApplying then return end
+ _revolverApplying=true
+ local char=player.Character
+ if not char then skinStatus.Text="Spawn first." _revolverApplying=false return end
+ if not WRU.GetRevolverTemplate(skinName) then skinStatus.Text="'"..skinName.."' not in game." _revolverApplying=false return end
+ if not originalRevolverAttrs then originalRevolverAttrs=saveAttrs(REVOLVER_ATTR_KEYS) end
+ local motor=findRigMotor(char,"RevolverRoot")
+ local part0,motorName,savedC0,savedC1
+ if motor then
+  part0=motor.Part0 motorName=motor.Name savedC0=motor.C0 savedC1=motor.C1
+ else
+  part0=char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso")
+  motorName="Revolver_HipAttach_L"
+ end
+ if not part0 then skinStatus.Text="No attachment point." _revolverApplying=false return end
+ -- don't touch RevolverSkin attribute — that replicates and leaks to replay/other players
+ local newRig,newRoot=WRU.ApplyRevolverSkin(char,skinName,part0,motorName)
+ if newRig then
+  newRig:SetAttribute("ClientVisible",true)
+  newRig:SetAttribute("_kintest",skinName)
+  local isHand=part0.Name=="Right Arm" or part0.Name=="RightHand" or part0.Name=="Left Arm" or part0.Name=="LeftHand"
+  if not isHand and savedC0 then
+   local m2=findRigMotor(char,"RevolverRoot")
+   if m2 then m2.C0=savedC0 m2.C1=savedC1 end
+  end
+  pcall(function() Bindables.AnimateSkins:Fire() end)
+  activeRevolverSkin=skinName
+  skinStatus.Text="Revolver → "..skinName.." ✓"
+  if skinGuardConns.revolver then skinGuardConns.revolver:Disconnect() end
+  skinGuardConns.revolver=char.ChildAdded:Connect(function(child)
+   if child.Name=="RevolverRig" and activeRevolverSkin and not _revolverApplying then
+    if child:GetAttribute("_kintest")==activeRevolverSkin then return end
+    task.wait(0.2)
+    if not activeRevolverSkin or player.Character~=char or _revolverApplying then return end
+    local existing=char:FindFirstChild("RevolverRig")
+    if existing and existing:GetAttribute("_kintest")==activeRevolverSkin then return end
+    applyRevolverSkinFull(activeRevolverSkin)
+   end
+  end)
+ else
+  skinStatus.Text="Revolver skin failed."
+ end
+ _revolverApplying=false
+end
+
+-- wire up skin buttons
+for _,pair in knifeSkinButtons do
+ pair.btn.Activated:Connect(function() task.spawn(applyKnifeSkinFull,pair.entry.name) end)
+end
+for _,pair in revolverSkinButtons do
+ pair.btn.Activated:Connect(function() task.spawn(applyRevolverSkinFull,pair.entry.name) end)
+end
+resetSkinsBtn.Activated:Connect(function() clearWeaponSkin() end)
+
+-- ==========================================
+-- BULLET / THROW TRAIL HOOKS
+-- ==========================================
+-- Redirect bullet VFX to our active revolver skin
+BT.Fire=function(p1,p2,p3,p4)
+ _lastBTWasOurs=(activeRevolverSkin~=nil and p4==player.Character)
+ if _lastBTWasOurs then p3=activeRevolverSkin end
+ return _origBTFire(p1,p2,p3,p4)
+end
+BT.WallHit=function(p8,p9,p10,p11)
+ if _lastBTWasOurs and activeRevolverSkin then p11=activeRevolverSkin end
+ _lastBTWasOurs=false
+ return _origBTWallHit(p8,p9,p10,p11)
+end
+-- Guard ThrowEffect attribute against server resets while knife skin is active
+throwAttrGuard=player:GetAttributeChangedSignal("ThrowEffect"):Connect(function()
+ if activeKnifeSkin and not _knifeApplying then
+  local expected=activeKnifeSkin.."Trail"
+  if player:GetAttribute("ThrowEffect")~=expected then
+   player:SetAttribute("ThrowEffect",expected)
+  end
+ end
+end)
+
+-- ==========================================
+-- RESPAWN HANDLER
+-- ==========================================
 player.CharacterAdded:Connect(function(newChar)
  avatarGeneration+=1 clearAvatar() candidate=nil
  unspoofAll()
+ -- disconnect old skin guards (new char = new rig watchers needed)
+ for _,c in skinGuardConns do c:Disconnect() end
+ table.clear(skinGuardConns)
+ local savedKnife=activeKnifeSkin
+ local savedRevolver=activeRevolverSkin
+
  savedDisplayName=nil savedLevel=nil savedLevelAttr=nil savedStreak=nil savedStreakAttr=nil
  task.spawn(function()
   newChar:WaitForChild("OVERHEAD",10)
@@ -499,11 +819,28 @@ player.CharacterAdded:Connect(function(newChar)
     task.spawn(renderAvatar,aname)
    end
   end
+  -- re-apply weapon skins after respawn (wait for rigs to load)
+  if savedKnife then
+   newChar:WaitForChild("KnifeRig",8)
+   task.wait(0.3)
+   if player.Character==newChar then
+    task.spawn(applyKnifeSkinFull,savedKnife)
+   end
+  end
+  if savedRevolver then
+   newChar:WaitForChild("RevolverRig",8)
+   task.wait(0.3)
+   if player.Character==newChar then
+    task.spawn(applyRevolverSkinFull,savedRevolver)
+   end
+  end
  end)
  status.Text="Respawned."
 end)
 
--- triggerbot with wall check
+-- ==========================================
+-- TRIGGERBOT
+-- ==========================================
 local function visibleOpponent()
  local char=player.Character local camera=workspace.CurrentCamera
  local hum=char and char:FindFirstChildOfClass("Humanoid")
@@ -574,9 +911,19 @@ local connection=RunService.RenderStepped:Connect(function()
  end
 end)
 
+-- ==========================================
+-- CLEANUP
+-- ==========================================
 gui.Destroying:Connect(function()
  enabled=false avatarGeneration+=1 connection:Disconnect() clearAvatar()
  clearVerifiedTag() unspoofAll()
+ -- restore bullet tracer hooks
+ BT.Fire=_origBTFire BT.WallHit=_origBTWallHit
+ if throwAttrGuard then throwAttrGuard:Disconnect() throwAttrGuard=nil end
+ -- restore weapon skins to original
+ if activeKnifeSkin or activeRevolverSkin then clearWeaponSkin() end
+ for _,c in skinGuardConns do c:Disconnect() end
+ table.clear(skinGuardConns)
  local hum=player.Character and player.Character:FindFirstChildOfClass("Humanoid")
  if hum and savedDisplayName then hum.DisplayName=savedDisplayName end
  if savedLevel and savedLevel.obj and savedLevel.obj.Parent then savedLevel.obj.Value=savedLevel.val end
@@ -585,7 +932,9 @@ gui.Destroying:Connect(function()
  if savedStreakAttr~=nil then player:SetAttribute("WinStreak",savedStreakAttr) end
 end)
 
--- autoload on injection
+-- ==========================================
+-- AUTOLOAD
+-- ==========================================
 task.spawn(function()
  local char=player.Character or player.CharacterAdded:Wait()
  char:WaitForChild("OVERHEAD",10)
