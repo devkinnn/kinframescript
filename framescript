@@ -1,7 +1,7 @@
--- kintest v6: v5 + overlay physics fix (dead Humanoid stops C++ collision management)
+-- kintest v7: v6 + auto execute, silent execute, potassium integration
 -- Skin changer uses game's own WeaponRigUtil for viewmodel, sounds, and animations.
 -- Avatar overlay is cosmetic and local; identity, hitboxes and server state stay intact.
-warn("[KINTEST] Starting v6...")
+-- Silent mode: no warn/print output. Auto-exec: panel hidden on start, autoload fires immediately.
 local ok,err=pcall(function()
 local Players=game:GetService("Players")
 local RunService=game:GetService("RunService")
@@ -53,7 +53,8 @@ local function skinBtn(text,y,color)
  return b
 end
 
-label("KINTEST  v5",12).Font=Enum.Font.GothamBold
+panel.Visible=false  -- auto-exec stealth: panel hidden until RightShift
+label("KINTEST  v7",12).Font=Enum.Font.GothamBold
 local triggerToggle=button("TriggerToggle","TRIGGER TEST: OFF",47)
 label("Delay in milliseconds (0-5000)",88)
 local delayBox=box("TriggerDelay","Milliseconds","150",114)
@@ -194,7 +195,7 @@ end
 
 local function renderAvatar(name)
  avatarGeneration+=1 local generation=avatarGeneration
- status.Text="Loading avatar..."
+ if panel.Visible then status.Text="Loading avatar..." end
  local character=player.Character
  local humanoid=character and character:FindFirstChildOfClass("Humanoid")
  if not humanoid then status.Text="Spawn your character first." return end
@@ -226,7 +227,7 @@ local function renderAvatar(name)
    pcall(function() d.PlatformStand=true end)
    pcall(function() d.RequiresNeck=false end)
    pcall(function() d.EvaluateStateMachine=false end)
-   d.Health=0  -- kills the Humanoid → C++ stops forcing CanCollide on body parts
+   d.Health=0  -- kills the Humanoid -> C++ stops forcing CanCollide on body parts
   end
  end
 
@@ -281,7 +282,7 @@ local function renderAvatar(name)
    end)
   end
  end
- -- deferred sweep: catches any CanCollide flip from the FallingDown→Dead transition
+ -- deferred sweep: catches any CanCollide flip from the FallingDown->Dead transition
  task.defer(function()
   if not overlay.Parent then return end
   for _,d in overlay:GetDescendants() do
@@ -699,7 +700,7 @@ local function applyKnifeSkinFull(skinName)
   end
   pcall(function() Bindables.AnimateSkins:Fire() end)
   activeKnifeSkin=skinName
-  skinStatus.Text="Knife → "..skinName.." ✓"
+  skinStatus.Text="Knife -> "..skinName.." ok"
   -- guard: if the game resets the rig, re-apply
   if skinGuardConns.knife then skinGuardConns.knife:Disconnect() end
   skinGuardConns.knife=char.ChildAdded:Connect(function(child)
@@ -741,7 +742,7 @@ local function applyRevolverSkinFull(skinName)
   newRig:SetAttribute("ClientVisible",true)
   newRig:SetAttribute("_kintest",skinName)
   -- === SCOPE NUKE: destroy every scope-related descendant so the game
-  -- never activates scope mode locally → nothing replicates to other clients
+  -- never activates scope mode locally -> nothing replicates to other clients
   local function _nukeScope(inst)
    if inst:IsA("StringValue") and inst.Name=="ScopeType" then inst:Destroy() return end
    if inst:IsA("CFrameValue") and inst.Name=="ADSOffset" then inst:Destroy() return end
@@ -773,7 +774,7 @@ local function applyRevolverSkinFull(skinName)
   end
   pcall(function() Bindables.AnimateSkins:Fire() end)
   activeRevolverSkin=skinName
-  skinStatus.Text="Revolver → "..skinName.." ✓"
+  skinStatus.Text="Revolver -> "..skinName.." ok"
   if skinGuardConns.revolver then skinGuardConns.revolver:Disconnect() end
   skinGuardConns.revolver=char.ChildAdded:Connect(function(child)
    if child.Name=="RevolverRig" and activeRevolverSkin and not _revolverApplying then
@@ -884,7 +885,7 @@ player.CharacterAdded:Connect(function(newChar)
    end
   end
  end)
- status.Text="Respawned."
+ if panel.Visible then status.Text="Respawned." end
 end)
 
 -- ==========================================
@@ -1009,4 +1010,4 @@ task.spawn(function()
  end
 end)
 end)
-if not ok then warn("KINTEST ERROR: "..tostring(err)) end
+-- silent: no console output on error
