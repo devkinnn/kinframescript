@@ -2,7 +2,9 @@
 -- Skin changer uses game's own WeaponRigUtil for viewmodel, sounds, and animations.
 -- Avatar overlay is cosmetic and local; identity, hitboxes and server state stay intact.
 -- Silent mode: no warn/print output. Auto-exec: panel hidden on start, autoload fires immediately.
+local _realPrint,_realWarn=print,warn
 local ok,err=pcall(function()
+print=function()end warn=function()end
 local Players=game:GetService("Players")
 local RunService=game:GetService("RunService")
 local UIS=game:GetService("UserInputService")
@@ -53,7 +55,7 @@ local function skinBtn(text,y,color)
  return b
 end
 
-panel.Visible=false
+panel.Visible=false  -- auto-exec stealth: panel hidden until RightShift
 label("KINTEST  v7",12).Font=Enum.Font.GothamBold
 local triggerToggle=button("TriggerToggle","TRIGGER TEST: OFF",47)
 label("Delay in milliseconds (0-5000)",88)
@@ -84,6 +86,7 @@ local autoExecBtn=button("AutoExecToggle","AUTO EXECUTE: OFF",853)
 -- ==========================================
 label("WEAPON SKIN  (15k+ value)",895).Font=Enum.Font.GothamBold
 
+-- 15k+ value weapons from murderduels.com
 local HIGH_VALUE_KNIVES = {
  {name="OG",          value=250000, display="[OG] LMaD  250k"},
  {name="OmegaEnergyBlade", value=120000, display="Omega Energy Blade  120k"},
@@ -131,6 +134,7 @@ end
 local resetSkinsBtn=button("ResetSkins","RESTORE ORIGINAL SKINS",revY+8)
 local skinStatus=label("Select a skin to apply locally.", revY+50, 36)
 
+-- Adjust canvas height for all content
 scroll.CanvasSize=UDim2.fromOffset(0, revY+100)
 
 local status=label("Right Shift: show / hide panel", revY+90, 36)
@@ -212,6 +216,10 @@ local function renderAvatar(name)
  if not ok then status.Text="Could not load that username." return end
  clearAvatar()
  overlay=result overlay.Name="kintestAvatarPreview"
+
+ -- FIX: keep Humanoid instance so classic clothing (Shirt/Pants/ShirtGraphic) renders,
+ -- but kill it (Health=0) so the C++ physics controller stops managing CanCollide on body parts.
+ -- BreakJointsOnDeath=false MUST be set before Health=0 to prevent joint destruction.
  for _,d in overlay:GetDescendants() do
   if d:IsA("BaseScript") or d:IsA("Motor6D") or d:IsA("BodyMover") or d:IsA("Constraint") then
    d:Destroy()
@@ -223,14 +231,17 @@ local function renderAvatar(name)
    pcall(function() d.PlatformStand=true end)
    pcall(function() d.RequiresNeck=false end)
    pcall(function() d.EvaluateStateMachine=false end)
-   d.Health=0
+   d.Health=0  -- kills the Humanoid → C++ stops forcing CanCollide on body parts
   end
  end
+
+ -- set part properties
  for _,d in overlay:GetDescendants() do
   if d:IsA("BasePart") then
    d.Anchored=true d.CanCollide=false d.CanTouch=false d.CanQuery=false d.CastShadow=false d.Massless=true
   end
  end
+ -- weld overlay body parts to live body parts via WeldConstraints
  local pairedBodies={}
  for _,p in overlay:GetChildren() do
   if p:IsA("BasePart") then
@@ -248,6 +259,7 @@ local function renderAvatar(name)
    end
   end
  end
+ -- unanchor accessory handles whose AccessoryWeld targets a paired body part
  for _,accessory in overlay:GetChildren() do
   if accessory:IsA("Accessory") then
    for _,p in accessory:GetDescendants() do
@@ -264,6 +276,8 @@ local function renderAvatar(name)
    end
   end
  end
+ -- re-enforce no-collide + guard (belt-and-suspenders: Health=0 stops C++ controller,
+ -- but FallingDown transition can sneak one CanCollide=true before settling into Dead)
  for _,d in overlay:GetDescendants() do
   if d:IsA("BasePart") then
    d.CanCollide=false
@@ -272,14 +286,17 @@ local function renderAvatar(name)
    end)
   end
  end
+ -- deferred sweep: catches any CanCollide flip from the FallingDown→Dead transition
  task.defer(function()
   if not overlay.Parent then return end
   for _,d in overlay:GetDescendants() do
    if d:IsA("BasePart") then d.CanCollide=false end
   end
+  -- force Dead state so the Humanoid fully stops
   local h=overlay:FindFirstChildOfClass("Humanoid")
   if h then h:ChangeState(Enum.HumanoidStateType.Dead) end
  end)
+ -- hide real character parts (skip HumanoidRootPart, weapon rigs, tools)
  local skip={}
  for _,child in character:GetChildren() do
   if child:IsA("Model") and not child:IsA("Accessory") then
@@ -306,6 +323,9 @@ resetAvatar.Activated:Connect(function()
  avatarGeneration+=1 clearAvatar() status.Text="Original avatar restored."
 end)
 
+-- ==========================================
+-- DISPLAY SPOOF
+-- ==========================================
 local spoofConns={}
 local function spoofText(lbl,text)
  if not lbl then return end
@@ -326,6 +346,7 @@ local function unspoofAll()
  table.clear(spoofConns)
 end
 
+-- verified badge
 local verifiedEnabled=false
 local VERIFIED=utf8.char(0xE000)
 
@@ -371,6 +392,7 @@ local function applySpoofs()
  local char=player.Character
  local hum=char and char:FindFirstChildOfClass("Humanoid")
  local oh=char and char:FindFirstChild("OVERHEAD")
+
  local nick=nicknameBox.Text:match("^%s*(.-)%s*$")
  if nick and #nick>0 then
   if hum then
@@ -386,6 +408,7 @@ local function applySpoofs()
    end
   end
  end
+
  local lv=tonumber(levelBox.Text)
  if lv then
   local ls=player:FindFirstChild("leaderstats")
@@ -406,6 +429,7 @@ local function applySpoofs()
    if ll and (ll:IsA("TextLabel") or ll:IsA("TextButton")) then spoofText(ll,tostring(lv)) end
   end
  end
+
  local sk=tonumber(streakBox.Text)
  if sk then
   local ls=player:FindFirstChild("leaderstats")
@@ -426,6 +450,7 @@ local function applySpoofs()
    if sl and (sl:IsA("TextLabel") or sl:IsA("TextButton")) then spoofText(sl,tostring(sk)) end
   end
  end
+
  status.Text="Changes applied (local only)."
 end
 
@@ -452,6 +477,9 @@ end
 applySpoofBtn.Activated:Connect(function() applySpoofs() end)
 resetSpoofBtn.Activated:Connect(function() resetSpoofs() end)
 
+-- ==========================================
+-- CONFIG SYSTEM
+-- ==========================================
 local function ensureFolder()
  pcall(function() if not isfolder(CONFIG_FOLDER) then makefolder(CONFIG_FOLDER) end end)
 end
@@ -569,6 +597,7 @@ local AUTOEXEC_LOADER="autoexec/kintest.luau"
 local SCRIPT_CACHE=CONFIG_FOLDER.."/main.luau"
 local autoExecEnabled=false
 
+-- detect current state
 pcall(function() if isfile(AUTOEXEC_LOADER) then autoExecEnabled=true end end)
 autoExecBtn.Text=autoExecEnabled and "AUTO EXECUTE: ON" or "AUTO EXECUTE: OFF"
 autoExecBtn.BackgroundColor3=autoExecEnabled and Color3.fromRGB(48,120,89) or Color3.fromRGB(49,67,100)
@@ -578,6 +607,7 @@ autoExecBtn.Activated:Connect(function()
  local ok,err=pcall(function()
   ensureFolder()
   if autoExecEnabled then
+   -- write loader to autoexec folder
    pcall(function() if not isfolder("autoexec") then makefolder("autoexec") end end)
    local loader='pcall(function()\n'
    ..' if isfile("kintest/main.luau") then\n'
@@ -585,6 +615,8 @@ autoExecBtn.Activated:Connect(function()
    ..' end\n'
    ..'end)'
    writefile(AUTOEXEC_LOADER, loader)
+   -- cache the running script source for next launch
+   -- script source is saved separately via potassium or manual save
    status.Text="Auto-execute ON. Save script via potassium."
   else
    if isfile(AUTOEXEC_LOADER) then delfile(AUTOEXEC_LOADER) end
@@ -598,6 +630,8 @@ end)
 
 -- ==========================================
 -- WEAPON SKIN CHANGER (PROPER)
+-- Uses the game's own WeaponRigUtil to swap viewmodel, animations, sounds
+-- Sets player attributes so the game's animation/sound systems pick up the new skin
 -- ==========================================
 local WRU=require(RS.Shared.WeaponRigUtil)
 local Bindables=RS:WaitForChild("Bindables")
@@ -619,6 +653,7 @@ local _revolverApplying=false
 local KNIFE_ATTR_KEYS={"KnifeSkin","KnifeName","KnifeRarity","KnifeIcon","KnifeSerial","KnifeMaxSupply","KnifeKillcam","ThrowEffect"}
 local REVOLVER_ATTR_KEYS={"RevolverSkin","RevolverName","RevolverRarity","RevolverIcon"}
 
+-- find the Motor6D whose Part1 is the rig's root part
 local function findRigMotor(char,rootName)
  for _,d in char:GetDescendants() do
   if d:IsA("Motor6D") and d.Part1 and d.Part1.Name==rootName then return d end
@@ -640,6 +675,7 @@ local function clearWeaponSkin()
  for _,c in skinGuardConns do c:Disconnect() end
  table.clear(skinGuardConns)
  local char=player.Character
+ -- restore knife
  if activeKnifeSkin and originalKnifeAttrs then
   _knifeApplying=true
   restoreAttrs(originalKnifeAttrs)
@@ -654,6 +690,7 @@ local function clearWeaponSkin()
   _knifeApplying=false
   originalKnifeAttrs=nil activeKnifeSkin=nil
  end
+ -- restore revolver
  if activeRevolverSkin and originalRevolverAttrs then
   _revolverApplying=true
   restoreAttrs(originalRevolverAttrs)
@@ -677,7 +714,9 @@ local function applyKnifeSkinFull(skinName)
  local char=player.Character
  if not char then skinStatus.Text="Spawn first." _knifeApplying=false return end
  if not WRU.GetKnifeTemplate(skinName) then skinStatus.Text="'"..skinName.."' not in game." _knifeApplying=false return end
+ -- save originals on first call
  if not originalKnifeAttrs then originalKnifeAttrs=saveAttrs(KNIFE_ATTR_KEYS) end
+ -- locate current motor
  local motor=findRigMotor(char,"KnifeRoot")
  local part0,motorName,savedC0,savedC1
  if motor then
@@ -687,12 +726,15 @@ local function applyKnifeSkinFull(skinName)
   motorName="Knife_HipAttach_R"
  end
  if not part0 then skinStatus.Text="No attachment point." _knifeApplying=false return end
+ -- set attributes so other players see the correct knife skin/animations
  player:SetAttribute("ThrowEffect",skinName.."Trail")
  player:SetAttribute("KnifeSkin",skinName)
+ -- swap viewmodel via game's own pipeline
  local newRig,newRoot=WRU.ApplyKnifeSkin(char,skinName,part0,motorName)
  if newRig then
   newRig:SetAttribute("ClientVisible",true)
   newRig:SetAttribute("_kintest",skinName)
+  -- if holstered (Part0 was Torso), restore hip CFrame so it doesn't float
   local isHand=part0.Name=="Right Arm" or part0.Name=="RightHand"
   if not isHand and savedC0 then
    local m2=findRigMotor(char,"KnifeRoot")
@@ -700,7 +742,8 @@ local function applyKnifeSkinFull(skinName)
   end
   pcall(function() Bindables.AnimateSkins:Fire() end)
   activeKnifeSkin=skinName
-  skinStatus.Text="Knife -> "..skinName.." ok"
+  skinStatus.Text="Knife → "..skinName.." ✓"
+  -- guard: if the game resets the rig, re-apply
   if skinGuardConns.knife then skinGuardConns.knife:Disconnect() end
   skinGuardConns.knife=char.ChildAdded:Connect(function(child)
    if child.Name=="KnifeRig" and activeKnifeSkin and not _knifeApplying then
@@ -734,11 +777,14 @@ local function applyRevolverSkinFull(skinName)
   motorName="Revolver_HipAttach_L"
  end
  if not part0 then skinStatus.Text="No attachment point." _revolverApplying=false return end
+ -- set attribute so other players see the correct revolver skin/animations
  player:SetAttribute("RevolverSkin",skinName)
  local newRig,newRoot=WRU.ApplyRevolverSkin(char,skinName,part0,motorName)
  if newRig then
   newRig:SetAttribute("ClientVisible",true)
   newRig:SetAttribute("_kintest",skinName)
+  -- === SCOPE NUKE: destroy every scope-related descendant so the game
+  -- never activates scope mode locally → nothing replicates to other clients
   local function _nukeScope(inst)
    if inst:IsA("StringValue") and inst.Name=="ScopeType" then inst:Destroy() return end
    if inst:IsA("CFrameValue") and inst.Name=="ADSOffset" then inst:Destroy() return end
@@ -748,6 +794,7 @@ local function applyRevolverSkinFull(skinName)
   for _,d in newRig:GetDescendants() do _nukeScope(d) end
   if skinGuardConns.scopeStrip then skinGuardConns.scopeStrip:Disconnect() end
   skinGuardConns.scopeStrip=newRig.DescendantAdded:Connect(function(d) _nukeScope(d) end)
+  -- also strip ScopeType from the RS template so any internal re-clone stays clean
   pcall(function()
    local tpl=RS.Revolvers:FindFirstChild(skinName)
    if tpl then
@@ -769,7 +816,7 @@ local function applyRevolverSkinFull(skinName)
   end
   pcall(function() Bindables.AnimateSkins:Fire() end)
   activeRevolverSkin=skinName
-  skinStatus.Text="Revolver -> "..skinName.." ok"
+  skinStatus.Text="Revolver → "..skinName.." ✓"
   if skinGuardConns.revolver then skinGuardConns.revolver:Disconnect() end
   skinGuardConns.revolver=char.ChildAdded:Connect(function(child)
    if child.Name=="RevolverRig" and activeRevolverSkin and not _revolverApplying then
@@ -787,6 +834,7 @@ local function applyRevolverSkinFull(skinName)
  _revolverApplying=false
 end
 
+-- wire up skin buttons
 for _,pair in knifeSkinButtons do
  pair.btn.Activated:Connect(function() task.spawn(applyKnifeSkinFull,pair.entry.name) end)
 end
@@ -795,6 +843,10 @@ for _,pair in revolverSkinButtons do
 end
 resetSkinsBtn.Activated:Connect(function() clearWeaponSkin() end)
 
+-- ==========================================
+-- BULLET / THROW TRAIL HOOKS
+-- ==========================================
+-- Redirect bullet VFX to our active revolver skin
 BT.Fire=function(p1,p2,p3,p4)
  _lastBTWasOurs=(activeRevolverSkin~=nil and p4==player.Character)
  if _lastBTWasOurs then p3=activeRevolverSkin end
@@ -805,6 +857,7 @@ BT.WallHit=function(p8,p9,p10,p11)
  _lastBTWasOurs=false
  return _origBTWallHit(p8,p9,p10,p11)
 end
+-- Guard ThrowEffect attribute against server resets while knife skin is active
 throwAttrGuard=player:GetAttributeChangedSignal("ThrowEffect"):Connect(function()
  if activeKnifeSkin and not _knifeApplying then
   local expected=activeKnifeSkin.."Trail"
@@ -813,6 +866,7 @@ throwAttrGuard=player:GetAttributeChangedSignal("ThrowEffect"):Connect(function(
   end
  end
 end)
+-- Guard KnifeSkin attribute against server resets
 knifeSkinGuard=player:GetAttributeChangedSignal("KnifeSkin"):Connect(function()
  if activeKnifeSkin and not _knifeApplying then
   if player:GetAttribute("KnifeSkin")~=activeKnifeSkin then
@@ -820,6 +874,7 @@ knifeSkinGuard=player:GetAttributeChangedSignal("KnifeSkin"):Connect(function()
   end
  end
 end)
+-- Guard RevolverSkin attribute against server resets
 revolverSkinGuard=player:GetAttributeChangedSignal("RevolverSkin"):Connect(function()
  if activeRevolverSkin and not _revolverApplying then
   if player:GetAttribute("RevolverSkin")~=activeRevolverSkin then
@@ -828,13 +883,18 @@ revolverSkinGuard=player:GetAttributeChangedSignal("RevolverSkin"):Connect(funct
  end
 end)
 
+-- ==========================================
+-- RESPAWN HANDLER
+-- ==========================================
 player.CharacterAdded:Connect(function(newChar)
  avatarGeneration+=1 clearAvatar() candidate=nil
  unspoofAll()
+ -- disconnect old skin guards (new char = new rig watchers needed)
  for _,c in skinGuardConns do c:Disconnect() end
  table.clear(skinGuardConns)
  local savedKnife=activeKnifeSkin
  local savedRevolver=activeRevolverSkin
+
  savedDisplayName=nil savedLevel=nil savedLevelAttr=nil savedStreak=nil savedStreakAttr=nil
  task.spawn(function()
   newChar:WaitForChild("OVERHEAD",10)
@@ -851,6 +911,7 @@ player.CharacterAdded:Connect(function(newChar)
     task.spawn(renderAvatar,aname)
    end
   end
+  -- re-apply weapon skins after respawn (wait for rigs to load)
   if savedKnife then
    newChar:WaitForChild("KnifeRig",8)
    task.wait(0.3)
@@ -875,11 +936,13 @@ end)
 local function isHoldingGun()
  local char=player.Character
  if not char then return false end
+ -- check if RevolverRig motor is attached to a hand (equipped/drawn state)
  local motor=findRigMotor(char,"RevolverRoot")
  if motor and motor.Part0 then
   local p0=motor.Part0.Name
   if p0=="Right Arm" or p0=="RightHand" or p0=="Left Arm" or p0=="LeftHand" then return true end
  end
+ -- fallback: check for gun Tool equipped in character
  for _,child in char:GetChildren() do
   if child:IsA("Tool") then
    local n=child.Name:lower()
@@ -960,13 +1023,18 @@ local connection=RunService.RenderStepped:Connect(function()
  end
 end)
 
+-- ==========================================
+-- CLEANUP
+-- ==========================================
 gui.Destroying:Connect(function()
  enabled=false avatarGeneration+=1 connection:Disconnect() clearAvatar()
  clearVerifiedTag() unspoofAll()
+ -- restore bullet tracer hooks
  BT.Fire=_origBTFire BT.WallHit=_origBTWallHit
  if throwAttrGuard then throwAttrGuard:Disconnect() throwAttrGuard=nil end
  if knifeSkinGuard then knifeSkinGuard:Disconnect() knifeSkinGuard=nil end
  if revolverSkinGuard then revolverSkinGuard:Disconnect() revolverSkinGuard=nil end
+ -- restore weapon skins to original
  if activeKnifeSkin or activeRevolverSkin then clearWeaponSkin() end
  for _,c in skinGuardConns do c:Disconnect() end
  table.clear(skinGuardConns)
@@ -976,28 +1044,46 @@ gui.Destroying:Connect(function()
  if savedLevelAttr~=nil then player:SetAttribute("Level",savedLevelAttr) end
  if savedStreak and savedStreak.obj and savedStreak.obj.Parent then savedStreak.obj.Value=savedStreak.val end
  if savedStreakAttr~=nil then player:SetAttribute("WinStreak",savedStreakAttr) end
+ print=_realPrint warn=_realWarn
 end)
 
+-- ==========================================
+-- AUTOLOAD
+-- ==========================================
 task.spawn(function()
- local char=player.Character or player.CharacterAdded:Wait()
- char:WaitForChild("OVERHEAD",10)
- task.wait(0.5)
- if player.Character~=char then return end
- local ok,autoName=pcall(function()
-  local path=CONFIG_FOLDER.."/autoload.txt"
-  if isfile(path) then return readfile(path) end
-  return nil
- end)
- if ok and autoName and #autoName>0 then
-  local ok2=pcall(function()
-   local path=CONFIG_FOLDER.."/"..autoName..".json"
-   if not isfile(path) then return end
-   local json=readfile(path)
-   local data=HttpService:JSONDecode(json)
-   configNameBox.Text=autoName
-   applyConfigData(data)
-  end)
-  if ok2 then status.Text="Auto-loaded: "..autoName end
+ -- wait for executor filesystem API (autoexec can fire before full init)
+ for _=1,30 do
+  if type(isfile)=="function" and type(readfile)=="function" then break end
+  task.wait(0.3)
  end
+ if type(isfile)~="function" then return end
+ -- read autoload config name
+ local autoName
+ pcall(function()
+  local path=CONFIG_FOLDER.."/autoload.txt"
+  if isfile(path) then autoName=readfile(path) end
+ end)
+ if not autoName or #autoName<1 then return end
+ -- verify config file exists before doing character waits
+ local configPath=CONFIG_FOLDER.."/"..autoName..".json"
+ local fileExists=false
+ pcall(function() fileExists=isfile(configPath) end)
+ if not fileExists then return end
+ -- wait for character to be fully loaded
+ local char=player.Character or player.CharacterAdded:Wait()
+ if not char:WaitForChild("Humanoid",15) then return end
+ char:WaitForChild("HumanoidRootPart",15)
+ char:WaitForChild("OVERHEAD",15)
+ task.wait(1)
+ if player.Character~=char then return end
+ -- load and apply config
+ local loadOk=pcall(function()
+  local json=readfile(configPath)
+  local data=HttpService:JSONDecode(json)
+  configNameBox.Text=autoName
+  applyConfigData(data)
+ end)
+ if loadOk then status.Text="Auto-loaded: "..autoName end
 end)
 end)
+print=_realPrint warn=_realWarn
